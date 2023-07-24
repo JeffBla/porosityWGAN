@@ -1,0 +1,7 @@
+# data
+data
+images
+data.*
+
+# env
+__pycache__
