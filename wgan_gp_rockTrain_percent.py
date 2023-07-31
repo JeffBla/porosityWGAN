@@ -98,10 +98,11 @@ class Generator(nn.Module):
             nn.ConvTranspose2d(ngf * 2, ngf, 4, 2, 1, bias=False),
             # nn.BatchNorm2d(ngf * 2),
             nn.ReLU(True),
+            # state size. ``(nc) x 64 x 64``
             nn.ConvTranspose2d(ngf, 3, 4, 2, 1, bias=False), # 3 for percent layer
             # nn.Tanh(),
             PercentLayer_dcgan()
-            # state size. ``(nc) x 64 x 64``
+            # state size. ``(nc) x 128 x 128``
         )
 
     def forward(self, z):

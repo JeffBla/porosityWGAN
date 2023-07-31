@@ -1,3 +1,4 @@
+from tqdm.auto import tqdm
 import torch
 
 
@@ -21,7 +22,7 @@ def train_step(model: torch.nn.Module,
     train_loss, train_acc = 0, 0
     model.to(device)
 
-    for batch, (X, y) in enumerate(data_loader):
+    for batch, (X, y) in enumerate(tqdm(data_loader)):
         # Send data to GPU
         X, y = X.to(device), y.to(device)
 
@@ -67,7 +68,7 @@ def test_step(data_loader: torch.utils.data.DataLoader,
     model.eval()  # put model in eval mode
     # Turn on inference context manager
     with torch.inference_mode():
-        for X, y in data_loader:
+        for X, y in tqdm(data_loader):
             # Send data to GPU
             X, y = X.to(device), y.to(device)
 

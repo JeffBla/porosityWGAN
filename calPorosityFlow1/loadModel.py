@@ -34,14 +34,16 @@ model.load_state_dict(torch.load('./model/ct2Percent.pt'))
 
 targetHuList = getTargetCtDataset('./dcmCutCycleOut_copy')
 
-porosityList = np.array([])
-for seqCt in targetHuList:
-    seqPorosity = np.array([])
-    for val in seqCt:
-        val = rescaleCTToN1and1(val)
-        val = torch.tensor(val).unsqueeze(0).type(torch.float32)
-        sPercent, _, _ = model(val)
-        seqPorosity = np.append(seqPorosity, 1 - sPercent.detach().numpy())
-    porosityList = np.append(porosityList,
-                             seqPorosity.sum() / len(seqPorosity))
+model.eval()
+with torch.inference_mode():
+    porosityList = np.array([])
+    for seqCt in targetHuList:
+        seqPorosity = np.array([])
+        for val in seqCt:
+            val = rescaleCTToN1and1(val)
+            val = torch.tensor(val).unsqueeze(0).type(torch.float32)
+            sPercent = model(val.unsqueeze(0))[0, 0]
+            seqPorosity = np.append(seqPorosity, 1 - sPercent.detach().numpy())
+        porosityList = np.append(porosityList,
+                                 seqPorosity.sum() / len(seqPorosity))
 print(porosityList)
