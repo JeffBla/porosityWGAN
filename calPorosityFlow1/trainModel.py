@@ -53,10 +53,11 @@ parser.add_argument(
     type=int,
     default=4,
     help="number of cpu threads to use during batch generation")
+
 opt = parser.parse_args()
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-print('cuda')
+print(device)
 
 train_dataset, test_dataset = dataPrepare.dataSet(NUM_IMAGE=200)
 
@@ -104,7 +105,7 @@ total_train_time_model_1 = print_train_time(start=train_time_start_on_gpu,
                                             end=train_time_end_on_gpu,
                                             device=device)
 
-torch.save(model.state_dict(), './model/rock/ct2Percent.pt')
+torch.save(model.state_dict(), './model/rock/ct2Percent/ct2Percent.pt')
 
 plt.plot(TrainlossList, label='Train loss')
 plt.plot(TestlossList, label='Test loss')

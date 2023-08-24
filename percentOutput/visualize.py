@@ -10,9 +10,6 @@ CTG = 2232.875
 W = 0
 AIR = -1000
 
-# rescale = (output-AIR) * (1/(CTG-AIR))
-#         rescale = 2 * rescale -1
-
 # plotly view
 fig = make_subplots(3, 3, horizontal_spacing=0.01, vertical_spacing=0.01)
 # read img
@@ -22,7 +19,7 @@ for i in range(NUM_PERCENT):
     img = np.load(f'./percentOutput/img_txt/img_{i}.npy')
     img = img.reshape(img.shape[1], img.shape[2])
 
-    ct = (img + 1 / 2) * (CTG - AIR) + AIR
+    ct = ((img + 1) / 2) * (CTG - AIR) + AIR
 
     percent = np.load(f'./percentOutput/percent_txt/percent_{i}.npy').reshape(
         img.shape[0], img.shape[1], 3)

@@ -27,30 +27,72 @@ import torch
 
 from percentlayer import PercentLayer_dcgan
 
+
 def batch_height_widthRescale(imagePlusOneDim: torch.Tensor) -> torch.Tensor:
     output = imagePlusOneDim.view(imagePlusOneDim.shape[0], -1)
     output -= output.min(1, keepdim=True)[0]
     output /= output.max(1, keepdim=True)[0]
-    output = output.view(imagePlusOneDim.shape[0], imagePlusOneDim.shape[1], imagePlusOneDim.shape[2])
+    output = output.view(imagePlusOneDim.shape[0], imagePlusOneDim.shape[1],
+                         imagePlusOneDim.shape[2])
     return output
 
 
 os.makedirs("images", exist_ok=True)
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--dataroot", type=str, default='data/rockXCT', help="the target of data folder")
-parser.add_argument("--n_epochs", type=int, default=100, help="number of epochs of training")
-parser.add_argument("--batch_size", type=int, default=8, help="size of the batches")
-parser.add_argument("--lr", type=float, default=0.0002, help="adam: learning rate")
-parser.add_argument("--b1", type=float, default=0.5, help="adam: decay of first order momentum of gradient")
-parser.add_argument("--b2", type=float, default=0.999, help="adam: decay of first order momentum of gradient")
-parser.add_argument("--n_cpu", type=int, default=8, help="number of cpu threads to use during batch generation")
-parser.add_argument("--latent_dim", type=int, default=100, help="dimensionality of the latent space")
-parser.add_argument("--img_size", type=int, default=128, help="size of each image dimension")
-parser.add_argument("--channels", type=int, default=1, help="number of image channels")
-parser.add_argument("--n_critic", type=int, default=5, help="number of training steps for discriminator per iter")
-parser.add_argument("--clip_value", type=float, default=0.01, help="lower and upper clip value for disc. weights")
-parser.add_argument("--sample_interval", type=int, default=400, help="interval betwen image samples")
+parser.add_argument("--dataroot",
+                    type=str,
+                    default='data/rockXCT',
+                    help="the target of data folder")
+parser.add_argument("--n_epochs",
+                    type=int,
+                    default=20,
+                    help="number of epochs of training")
+parser.add_argument("--batch_size",
+                    type=int,
+                    default=8,
+                    help="size of the batches")
+parser.add_argument("--lr",
+                    type=float,
+                    default=0.0002,
+                    help="adam: learning rate")
+parser.add_argument("--b1",
+                    type=float,
+                    default=0.5,
+                    help="adam: decay of first order momentum of gradient")
+parser.add_argument("--b2",
+                    type=float,
+                    default=0.999,
+                    help="adam: decay of first order momentum of gradient")
+parser.add_argument(
+    "--n_cpu",
+    type=int,
+    default=8,
+    help="number of cpu threads to use during batch generation")
+parser.add_argument("--latent_dim",
+                    type=int,
+                    default=100,
+                    help="dimensionality of the latent space")
+parser.add_argument("--img_size",
+                    type=int,
+                    default=128,
+                    help="size of each image dimension")
+parser.add_argument("--channels",
+                    type=int,
+                    default=1,
+                    help="number of image channels")
+parser.add_argument("--n_critic",
+                    type=int,
+                    default=5,
+                    help="number of training steps for discriminator per iter")
+parser.add_argument("--clip_value",
+                    type=float,
+                    default=0.01,
+                    help="lower and upper clip value for disc. weights")
+parser.add_argument("--sample_interval",
+                    type=int,
+                    default=400,
+                    help="interval betwen image samples")
 opt = parser.parse_args()
 
 # Size of feature maps in generator
@@ -66,16 +108,10 @@ img_shape = (opt.channels, opt.img_size, opt.img_size)
 cuda = True if torch.cuda.is_available() else False
 print(f'cuda: {cuda}')
 
+
 class Generator(nn.Module):
     def __init__(self):
         super(Generator, self).__init__()
-
-        def block(in_feat, out_feat, normalize=True):
-            layers = [nn.Linear(in_feat, out_feat)]
-            if normalize:
-                layers.append(nn.BatchNorm1d(out_feat, 0.8))
-            layers.append(nn.LeakyReLU(0.2, inplace=True))
-            return layers
 
         self.model = nn.Sequential(
             # input is Z, going into a convolution
@@ -99,7 +135,8 @@ class Generator(nn.Module):
             # nn.BatchNorm2d(ngf * 2),
             nn.ReLU(True),
             # state size. ``(nc) x 64 x 64``
-            nn.ConvTranspose2d(ngf, 3, 4, 2, 1, bias=False), # 3 for percent layer
+            nn.ConvTranspose2d(ngf, 3, 4, 2, 1,
+                               bias=False),  # 3 for percent layer
             # nn.Tanh(),
             PercentLayer_dcgan()
             # state size. ``(nc) x 128 x 128``
@@ -137,11 +174,11 @@ class Discriminator(nn.Module):
             nn.LeakyReLU(0.2, inplace=True),
             # state size. ``(ndf*16) x 4 x 4``
             nn.Conv2d(ndf * 16, 1, 4, 1, 0, bias=False),
-            )
+        )
 
     def forward(self, img):
         validity = self.model(img)
-        validity = validity.view(validity.shape[0],-1)
+        validity = validity.view(validity.shape[0], -1)
         return validity
 
 
@@ -155,6 +192,7 @@ discriminator = Discriminator()
 if cuda:
     generator.cuda()
     discriminator.cuda()
+
 
 class rockXCTDicomDataset(Dataset):
     def __init__(self, ct_imgSet, transform=None):
@@ -170,29 +208,31 @@ class rockXCTDicomDataset(Dataset):
             image = self.transform(image)
         return image
 
-datasetList = [] 
+
+datasetList = []
 dataroot = Path(opt.dataroot)
 for folder in os.listdir(dataroot):
-    targetFolder = dataroot/folder
+    targetFolder = dataroot / folder
     reader = vtkDICOMImageReader()
     reader.SetDirectoryName(str(targetFolder))
     reader.Update()
 
     files = os.listdir(targetFolder)
 
-    dcmImage_CT = np.array(reader.GetOutput().GetPointData().GetScalars()).reshape(
-        len(files), reader.GetHeight(), reader.GetWidth())
+    dcmImage_CT = np.array(
+        reader.GetOutput().GetPointData().GetScalars()).reshape(
+            len(files), reader.GetHeight(), reader.GetWidth())
 
     dcmImage_CT_tensor = torch.tensor(dcmImage_CT, dtype=torch.float)
     batch_height_widthRescale(dcmImage_CT_tensor)
     dcmImage_CT_tensor = dcmImage_CT_tensor.unsqueeze(1)
 
     dataset = rockXCTDicomDataset(ct_imgSet=dcmImage_CT_tensor,
-                                transform=transforms.Compose([
-                                    transforms.Resize(opt.img_size, antialias=False),
-                                    transforms.Normalize((0.5),
-                                                        (0.5)),
-                                                        ]))
+                                  transform=transforms.Compose([
+                                      transforms.Resize(opt.img_size,
+                                                        antialias=False),
+                                      transforms.Normalize((0.5), (0.5)),
+                                  ]))
     datasetList.append(dataset)
 wholeDataset = torch.utils.data.ConcatDataset(datasetList)
 
@@ -203,8 +243,12 @@ dataloader = torch.utils.data.DataLoader(wholeDataset,
                                          num_workers=2)
 
 # Optimizers
-optimizer_G = torch.optim.Adam(generator.parameters(), lr=opt.lr, betas=(opt.b1, opt.b2))
-optimizer_D = torch.optim.Adam(discriminator.parameters(), lr=opt.lr, betas=(opt.b1, opt.b2))
+optimizer_G = torch.optim.Adam(generator.parameters(),
+                               lr=opt.lr,
+                               betas=(opt.b1, opt.b2))
+optimizer_D = torch.optim.Adam(discriminator.parameters(),
+                               lr=opt.lr,
+                               betas=(opt.b1, opt.b2))
 
 Tensor = torch.cuda.FloatTensor if cuda else torch.FloatTensor
 
@@ -214,9 +258,11 @@ def compute_gradient_penalty(D, real_samples, fake_samples):
     # Random weight term for interpolation between real and fake samples
     alpha = Tensor(np.random.random((real_samples.size(0), 1, 1, 1)))
     # Get random interpolation between real and fake samples
-    interpolates = (alpha * real_samples + ((1 - alpha) * fake_samples)).requires_grad_(True)
+    interpolates = (alpha * real_samples +
+                    ((1 - alpha) * fake_samples)).requires_grad_(True)
     d_interpolates = D(interpolates)
-    fake = Variable(Tensor(real_samples.shape[0], 1).fill_(1.0), requires_grad=False)
+    fake = Variable(Tensor(real_samples.shape[0], 1).fill_(1.0),
+                    requires_grad=False)
     # Get gradient w.r.t. interpolates
     gradients = autograd.grad(
         outputs=d_interpolates,
@@ -227,7 +273,7 @@ def compute_gradient_penalty(D, real_samples, fake_samples):
         only_inputs=True,
     )[0]
     gradients = gradients.view(gradients.size(0), -1)
-    gradient_penalty = ((gradients.norm(2, dim=1) - 1) ** 2).mean()
+    gradient_penalty = ((gradients.norm(2, dim=1) - 1)**2).mean()
     return gradient_penalty
 
 
@@ -252,7 +298,9 @@ for epoch in range(opt.n_epochs):
         optimizer_D.zero_grad()
 
         # Sample noise as generator input
-        z = Variable(Tensor(np.random.normal(0, 1, (imgs.shape[0], opt.latent_dim, 1, 1))))
+        z = Variable(
+            Tensor(
+                np.random.normal(0, 1, (imgs.shape[0], opt.latent_dim, 1, 1))))
 
         # Generate a batch of images
         fake_imgs = generator(z)
@@ -262,9 +310,12 @@ for epoch in range(opt.n_epochs):
         # Fake images
         fake_validity = discriminator(fake_imgs)
         # Gradient penalty
-        gradient_penalty = compute_gradient_penalty(discriminator, real_imgs.data, fake_imgs.data)
+        gradient_penalty = compute_gradient_penalty(discriminator,
+                                                    real_imgs.data,
+                                                    fake_imgs.data)
         # Adversarial loss
-        d_loss = -torch.mean(real_validity) + torch.mean(fake_validity) + lambda_gp * gradient_penalty
+        d_loss = -torch.mean(real_validity) + torch.mean(
+            fake_validity) + lambda_gp * gradient_penalty
 
         d_loss.backward()
         optimizer_D.step()
@@ -288,17 +339,19 @@ for epoch in range(opt.n_epochs):
             g_loss.backward()
             optimizer_G.step()
 
-            print(
-                "[Epoch %d/%d] [Batch %d/%d] [D loss: %f] [G loss: %f]"
-                % (epoch, opt.n_epochs, i, len(dataloader), d_loss.item(), g_loss.item())
-            )
+            print("[Epoch %d/%d] [Batch %d/%d] [D loss: %f] [G loss: %f]" %
+                  (epoch, opt.n_epochs, i, len(dataloader), d_loss.item(),
+                   g_loss.item()))
 
             # Save Losses for plotting later
             G_losses.append(d_loss.item())
             D_losses.append(g_loss.item())
 
             if batches_done % opt.sample_interval == 0:
-                save_image(fake_imgs.data[:25], "images/%d.png" % batches_done, nrow=5, normalize=True)
+                save_image(fake_imgs.data[:25],
+                           "images/%d.png" % batches_done,
+                           nrow=5,
+                           normalize=True)
 
             batches_done += opt.n_critic
 
@@ -315,7 +368,6 @@ plt.ylabel("Loss")
 plt.legend()
 plt.show()
 
-
 # Grab a batch of real images from the dataloader
 real_batch = next(iter(dataloader))
 
@@ -326,9 +378,8 @@ plt.axis("off")
 plt.title("Real Images")
 plt.imshow(
     np.transpose(
-        vutils.make_grid(real_batch[0][:64],
-                         padding=5,
-                         normalize=True).cpu(), (1, 2, 0)))
+        vutils.make_grid(real_batch[0][:64], padding=5, normalize=True).cpu(),
+        (1, 2, 0)))
 
 # Plot the fake images from the last epoch
 plt.subplot(1, 2, 2)
@@ -338,6 +389,6 @@ plt.imshow(
     np.transpose(
         vutils.make_grid(fake_imgs.data[:25],
                          padding=5,
-                         nrow=5, 
+                         nrow=5,
                          normalize=True).cpu(), (1, 2, 0)))
 plt.show()
