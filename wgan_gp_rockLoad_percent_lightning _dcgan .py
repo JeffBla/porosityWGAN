@@ -29,6 +29,7 @@ import torch
 
 import pytorch_lightning as pl
 import lightning as L
+from lightning.pytorch.tuner import Tuner
 
 from percentlayer import PercentLayer_dcgan
 
@@ -141,6 +142,7 @@ class Generator(nn.Module):
         )
 
     def forward(self, z):
+        z = z.view(z.shape[0], self.latent_dim, 1, 1)
         img = self.model(z)
         img = img.view(img.size(0), *self.img_shape)
         return img
@@ -204,10 +206,10 @@ class WGAN_gp(L.LightningModule):
         self.discriminator = Discriminator(img_shape=data_shape)
 
         self.validation_z = torch.randn(self.hparams.batch_size,
-                                        self.hparams.latent_dim, 1, 1)
+                                        self.hparams.latent_dim)
 
         self.example_input_array = torch.zeros(self.hparams.batch_size,
-                                               self.hparams.latent_dim, 1, 1)
+                                               self.hparams.latent_dim)
 
         self.lambda_gp = 10
 
@@ -233,7 +235,7 @@ class WGAN_gp(L.LightningModule):
         optimizer_g, optimizer_d = self.optimizers()
 
         # sample noise
-        z = torch.randn(imgs.shape[0], self.hparams.latent_dim, 1, 1)
+        z = torch.randn(imgs.shape[0], self.hparams.latent_dim)
         z = z.type_as(imgs)
 
         # train discriminator
@@ -396,6 +398,21 @@ class rockDataModule(L.LightningDataModule):
 # ----------
 
 dm = rockDataModule()
-model = WGAN_gp(*dm.dim)
-trainer = L.Trainer(accelerator='auto', max_epochs=60)
-trainer.fit(model, dm)
+model = WGAN_gp.load_from_checkpoint(
+    'lightning_logs/64_64_8_60/checkpoints/epoch=59-step=41400.ckpt')
+
+# Sample noise as generator input
+z = torch.randn(opt.batch_size, opt.latent_dim, 1, 1, device='cuda')
+# Grab a batch of real images from the dataloader
+fake_imgs = model(z)
+
+# Plot the fake images from the last epoch
+plt.axis("off")
+plt.title("Fake Images")
+plt.imshow(
+    np.transpose(
+        vutils.make_grid(fake_imgs.data[:25],
+                         padding=5,
+                         nrow=5,
+                         normalize=True).cpu(), (1, 2, 0)))
+plt.show()
