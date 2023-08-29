@@ -18,7 +18,7 @@ import torchvision.transforms as transforms
 from torchvision.utils import save_image
 import torchvision.utils as vutils
 
-from torch.utils.data import DataLoader, Dataset, random_split
+from torch.utils.data import DataLoader, Dataset
 from torchvision import datasets
 from torch.autograd import Variable
 
@@ -27,11 +27,10 @@ import torch.nn.functional as F
 import torch.autograd as autograd
 import torch
 
-import pytorch_lightning as pl
 import lightning as L
-from lightning.pytorch.tuner import Tuner
 
 from percentlayer import PercentLayer_dcgan
+from rockXCTDicDataset import *
 
 
 def batch_height_widthRescale(imagePlusOneDim: torch.Tensor) -> torch.Tensor:
@@ -328,69 +327,6 @@ class WGAN_gp(L.LightningModule):
         gradients = gradients.view(gradients.size(0), -1)
         gradient_penalty = ((gradients.norm(2, dim=1) - 1)**2).mean()
         return gradient_penalty
-
-
-class rockXCTDicomDataset(Dataset):
-    def __init__(self, ct_imgSet, transform=None):
-        self.ct_imgSet = ct_imgSet
-        self.transform = transform
-
-    def __len__(self):
-        return self.ct_imgSet.shape[0]
-
-    def __getitem__(self, idx):
-        image = self.ct_imgSet[idx]
-        if self.transform:
-            image = self.transform(image)
-        return image
-
-
-class rockDataModule(L.LightningDataModule):
-    def __init__(self,
-                 batch_size: int = opt.batch_size,
-                 dataroot: str = opt.dataroot,
-                 img_size: int = opt.img_size,
-                 channel: int = opt.channels):
-        super().__init__()
-        self.batch_size = batch_size
-        self.dataroot = dataroot
-        self.datasetList = []
-        self.img_size = img_size
-        self.dim = (channel, self.img_size, self.img_size)
-
-    def setup(self, stage):
-        datarootPath = Path(self.dataroot)
-        for folder in os.listdir(datarootPath):
-            targetFolder = datarootPath / folder
-            reader = vtkDICOMImageReader()
-            reader.SetDirectoryName(str(targetFolder))
-            reader.Update()
-
-            files = os.listdir(targetFolder)
-
-            dcmImage_CT = np.array(
-                reader.GetOutput().GetPointData().GetScalars()).reshape(
-                    len(files), reader.GetHeight(), reader.GetWidth())
-
-            dcmImage_CT_tensor = torch.tensor(dcmImage_CT, dtype=torch.float)
-            batch_height_widthRescale(dcmImage_CT_tensor)
-            dcmImage_CT_tensor = dcmImage_CT_tensor.unsqueeze(1)
-
-            dataset = rockXCTDicomDataset(
-                ct_imgSet=dcmImage_CT_tensor,
-                transform=transforms.Compose([
-                    transforms.Resize(self.img_size, antialias=False),
-                    transforms.Normalize((0.5), (0.5)),
-                ]))
-            self.datasetList.append(dataset)
-
-        self.wholeDataset = torch.utils.data.ConcatDataset(self.datasetList)
-
-    def train_dataloader(self) -> TRAIN_DATALOADERS:
-        return DataLoader(self.wholeDataset,
-                          batch_size=self.batch_size,
-                          shuffle=True,
-                          num_workers=opt.n_cpu)
 
 
 # ----------
