@@ -125,7 +125,7 @@ class Generator(nn.Module):
             nn.ConvTranspose2d(ngf * 4, ngf * 2, 4, 2, 1, bias=False),
             nn.ReLU(True),
             # state size. ``(ngf*2) x 128 x 128``
-            nn.ConvTranspose2d(ngf * 2, 3, 3, 3, 1,
+            nn.ConvTranspose2d(ngf * 2, 3, 5, 3, 1,
                                bias=False),  # 3 for percent layer
             PercentLayer_dcgan()
             # state size. ``(nc) x 382 x 382``
@@ -145,22 +145,22 @@ class Discriminator(nn.Module):
             # input is ``(nc) x 382 x 382``
             nn.Conv2d(img_shape[0], ndf, 3, 3, 1, bias=False),
             nn.LeakyReLU(0.2, inplace=True),
-            # state size. ``(ndf*2) x 128 x 128``
+            # state size. ``(ndf) x 128 x 128``
             nn.Conv2d(ndf, ndf * 2, 4, 2, 1, bias=False),
             nn.LeakyReLU(0.2, inplace=True),
-            # state size. ``(ndf*4) x 64 x 64``
+            # state size. ``(ndf*2) x 64 x 64``
             nn.Conv2d(ndf * 2, ndf * 4, 4, 2, 1, bias=False),
             nn.LeakyReLU(0.2, inplace=True),
-            # state size. ``(ndf*8) x 32 x 32``
+            # state size. ``(ndf*4) x 32 x 32``
             nn.Conv2d(ndf * 4, ndf * 8, 4, 2, 1, bias=False),
             nn.LeakyReLU(0.2, inplace=True),
-            # state size. ``(ndf*16) x 16 x 16``
+            # state size. ``(ndf*8) x 16 x 16``
             nn.Conv2d(ndf * 8, ndf * 16, 4, 2, 1, bias=False),
             nn.LeakyReLU(0.2, inplace=True),
-            # state size. ``(ndf*32) x 8 x 8``
+            # state size. ``(ndf*16) x 8 x 8``
             nn.Conv2d(ndf * 16, ndf * 32, 4, 2, 1, bias=False),
             nn.LeakyReLU(0.2, inplace=True),
-            # state size. ``(ndf*64) x 4 x 4``
+            # state size. ``(ndf*32) x 4 x 4``
             nn.Conv2d(ndf * 32, 1, 4, 1, 0, bias=False),
         )
 

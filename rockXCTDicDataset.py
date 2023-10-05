@@ -77,8 +77,8 @@ class rockDataModule(L.LightningDataModule):
                     len(files), reader.GetHeight(), reader.GetWidth())
 
             dcmImage_CT_tensor = torch.tensor(dcmImage_CT, dtype=torch.float)
-            batch_height_widthRescale(dcmImage_CT_tensor)
             dcmImage_CT_tensor = dcmImage_CT_tensor.unsqueeze(1)
+            dcmImage_CT_tensor = batch_height_widthRescale(dcmImage_CT_tensor)
 
             dataset = rockXCTDicomDataset(
                 ct_imgSet=dcmImage_CT_tensor,

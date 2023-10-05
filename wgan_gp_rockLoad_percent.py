@@ -276,7 +276,7 @@ fake_imgs = generator(z)
 
 # save percent info
 percents = torch.softmax(features[0], 1)
-percents_np = percents.view(8, 3, -1).detach().cpu().numpy()
+percents_np = percents.view(percents.shape[0], 3, -1).detach().cpu().numpy()
 for i in range(percents_np.shape[0]):
     target = percents_np[i]
     target = np.array(list(zip(target[0], target[1], target[2])))
