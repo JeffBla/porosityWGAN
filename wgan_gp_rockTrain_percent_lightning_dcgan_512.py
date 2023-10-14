@@ -328,7 +328,7 @@ class WGAN_gp(L.LightningModule):
 #  Training
 # ----------
 
-dm = rockDataModule(opt.batch_size, opt.dataroot, opt.img_size, opt.channels)
+dm = rockDataModule(opt.batch_size, opt.dataroot, opt.img_size, opt.channels, opt.n_cpu)
 model = WGAN_gp(*dm.dim)
 trainer = L.Trainer(accelerator='auto', max_epochs=60)
 trainer.fit(model, dm)
