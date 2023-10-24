@@ -64,6 +64,13 @@ class DicomToNumberModel(L.LightningModule):
         super(DicomToNumberModel, self).__init__()
         # Use a pre-trained CNN model as the feature extractor
         self.feature_extractor = models.resnet18(pretrained=True)
+        # Modify the input layer to input a single channel
+        self.feature_extractor.conv1 = nn.Conv2d(1,
+                                                 64,
+                                                 kernel_size=(7, 7),
+                                                 stride=(2, 2),
+                                                 padding=(3, 3),
+                                                 bias=False)
         # Modify the final classification layer to output a single number
         self.feature_extractor.fc = nn.Linear(
             self.feature_extractor.fc.in_features, num_classes)
@@ -100,5 +107,5 @@ class DicomToNumberModel(L.LightningModule):
 dm = rockFractionalDataModule(opt.batch_size, opt.dataroot, opt.csv_file,
                               opt.img_size, opt.channels, opt.n_cpu)
 model = DicomToNumberModel()
-trainer = L.Trainer(accelerator='auto', max_epochs=60)
+trainer = L.Trainer(accelerator='auto', max_epochs=opt.n_epochs)
 trainer.fit(model, dm)

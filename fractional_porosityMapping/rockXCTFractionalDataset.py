@@ -15,14 +15,17 @@ from pathlib import Path
 
 import torch
 import torchvision.transforms as transforms
-from torch.utils.data import DataLoader, Dataset, random_split
+from torch.utils.data import DataLoader, Dataset, random_split, ConcatDataset
 
 import lightning as L
 
 
-def removeDcmImage(dcmImage_CT_tensor, index):
-    return torch.cat(
-        (dcmImage_CT_tensor[:index], dcmImage_CT_tensor[index + 1:]))
+def removeDcmImage(dcmImage_CT_tensor, indexes):
+    preserve_indexes = range(dcmImage_CT_tensor.shape[0])
+    preserve_indexes = list(
+        filter((lambda x: preserve_indexes[x] not in indexes),
+               preserve_indexes))
+    return dcmImage_CT_tensor[preserve_indexes]
 
 
 def batch_height_widthRescale(imagePlusOneDim: torch.Tensor) -> torch.Tensor:
@@ -45,14 +48,10 @@ class rockXCTFractionMappingDataset(Dataset):
     def __getitem__(self, idx):
         image = self.ct_imgSet[idx]
 
-        sample = {
-            'image': image,
-            'fractional_porosity': self.fractional_porositySet[idx]
-        }
         if self.transform:
-            sample = self.transform(sample)
+            image = self.transform(image)
 
-        return sample
+        return image, self.fractional_porositySet[idx]
 
 
 class rockFractionalDataModule(L.LightningDataModule):
@@ -94,9 +93,11 @@ class rockFractionalDataModule(L.LightningDataModule):
             dcmImage_CT_tensor = batch_height_widthRescale(dcmImage_CT_tensor)
 
             # fractional porosity appending
+            section_coreID = folder.split('_')[0]
             section_num = int(folder.split('_')[-1])
-            section_df = fractional_df[fractional_df['Section (m)'] ==
-                                       section_num]
+            section_df = fractional_df[
+                (fractional_df['Core ID'] == section_coreID)
+                & (fractional_df['Section (m)'] == section_num)]
             section_df = section_df[:dcmImage_CT_tensor.shape[0]].reset_index()
 
             # remove nan along with dcm image
@@ -104,11 +105,12 @@ class rockFractionalDataModule(L.LightningDataModule):
                 section_df['Fractional porosity'].isna()].index
 
             # remove value inside dcmImage tensor
-            for i in remove_indexes:
-                dcmImage_CT_tensor = removeDcmImage(dcmImage_CT_tensor, i)
+            if not remove_indexes.empty:
+                dcmImage_CT_tensor = removeDcmImage(dcmImage_CT_tensor,
+                                                    remove_indexes)
 
-            # remove valuse inside dataFrame
-            section_df.dropna(inplace=True)
+                # remove valuse inside dataFrame
+                section_df.dropna(inplace=True)
 
             # Create Dataset
             dataset = rockXCTFractionMappingDataset(
@@ -121,7 +123,7 @@ class rockFractionalDataModule(L.LightningDataModule):
                 ]))
             self.datasetList.append(dataset)
 
-        self.wholeDataset = torch.utils.data.ConcatDataset(self.datasetList)
+        self.wholeDataset = ConcatDataset(self.datasetList)
 
         self.train_data, self.test_data = random_split(
             self.wholeDataset,
