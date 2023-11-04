@@ -51,7 +51,10 @@ class rockXCTFractionMappingDataset(Dataset):
         if self.transform:
             image = self.transform(image)
 
-        return image, self.fractional_porositySet[idx]
+        if self.fractional_porositySet is None:
+            return image
+        else:
+            return image, self.fractional_porositySet[idx]
 
 
 class rockFractionalDataModule(L.LightningDataModule):
@@ -73,7 +76,8 @@ class rockFractionalDataModule(L.LightningDataModule):
         self.train_test_spilt = 0.7
 
     def setup(self, stage):
-        fractional_df = pd.read_csv(self.csv_file)
+        if stage != 'predict':
+            fractional_df = pd.read_csv(self.csv_file)
 
         datarootPath = Path(self.dataroot)
         for folder in os.listdir(datarootPath):
@@ -92,30 +96,34 @@ class rockFractionalDataModule(L.LightningDataModule):
             dcmImage_CT_tensor = dcmImage_CT_tensor.unsqueeze(1)
             dcmImage_CT_tensor = batch_height_widthRescale(dcmImage_CT_tensor)
 
-            # fractional porosity appending
-            section_coreID = folder.split('_')[0]
-            section_num = int(folder.split('_')[-1])
-            section_df = fractional_df[
-                (fractional_df['Core ID'] == section_coreID)
-                & (fractional_df['Section (m)'] == section_num)]
-            section_df = section_df[:dcmImage_CT_tensor.shape[0]].reset_index()
+            target_df_values = None
+            if stage != 'predict':
+                # fractional porosity appending
+                section_coreID = folder.split('_')[0]
+                section_num = int(folder.split('_')[-1])
+                section_df = fractional_df[
+                    (fractional_df['Core ID'] == section_coreID)
+                    & (fractional_df['Section (m)'] == section_num)]
+                section_df = section_df[:dcmImage_CT_tensor.
+                                        shape[0]].reset_index()
 
-            # remove nan along with dcm image
-            remove_indexes = section_df[
-                section_df['Fractional porosity'].isna()].index
+                # remove nan along with dcm image
+                remove_indexes = section_df[
+                    section_df['Fractional porosity'].isna()].index
 
-            # remove value inside dcmImage tensor
-            if not remove_indexes.empty:
-                dcmImage_CT_tensor = removeDcmImage(dcmImage_CT_tensor,
-                                                    remove_indexes)
+                # remove value inside dcmImage tensor
+                if not remove_indexes.empty:
+                    dcmImage_CT_tensor = removeDcmImage(
+                        dcmImage_CT_tensor, remove_indexes)
 
-                # remove valuse inside dataFrame
-                section_df.dropna(inplace=True)
+                    # remove valuse inside dataFrame
+                    section_df.dropna(inplace=True)
+
+                target_df_values = section_df['Fractional porosity'].values
 
             # Create Dataset
             dataset = rockXCTFractionMappingDataset(
-                fractional_porositySet=section_df['Fractional porosity'].
-                values,
+                fractional_porositySet=target_df_values,
                 ct_imgSet=dcmImage_CT_tensor,
                 transform=transforms.Compose([
                     transforms.Resize(self.img_size, antialias=False),
@@ -125,9 +133,10 @@ class rockFractionalDataModule(L.LightningDataModule):
 
         self.wholeDataset = ConcatDataset(self.datasetList)
 
-        self.train_data, self.test_data = random_split(
-            self.wholeDataset,
-            [self.train_test_spilt, 1 - self.train_test_spilt])
+        if stage != 'predict':
+            self.train_data, self.test_data = random_split(
+                self.wholeDataset,
+                [self.train_test_spilt, 1 - self.train_test_spilt])
 
     def train_dataloader(self) -> TRAIN_DATALOADERS:
         return DataLoader(self.train_data,
@@ -137,6 +146,12 @@ class rockFractionalDataModule(L.LightningDataModule):
 
     def test_dataloader(self) -> EVAL_DATALOADERS:
         return DataLoader(self.test_data,
+                          batch_size=self.batch_size,
+                          shuffle=False,
+                          num_workers=self.n_cpu)
+
+    def predict_dataloader(self) -> EVAL_DATALOADERS:
+        return DataLoader(self.wholeDataset,
                           batch_size=self.batch_size,
                           shuffle=False,
                           num_workers=self.n_cpu)

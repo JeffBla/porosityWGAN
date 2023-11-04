@@ -1,4 +1,6 @@
 import argparse
+from typing import Any, Optional
+from lightning.pytorch.utilities.types import STEP_OUTPUT
 
 import torch
 import torch.nn as nn
@@ -11,6 +13,9 @@ import torchvision.models as models
 from rockXCTFractionalDataset import *
 
 parser = argparse.ArgumentParser()
+parser.add_argument('--isTrain',
+                    action='store_true',
+                    help='does it start to training')
 parser.add_argument("--dataroot",
                     type=str,
                     default='data/rockXCT_fractional',
@@ -21,7 +26,7 @@ parser.add_argument("--csv_file",
                     help="the target of csv file")
 parser.add_argument("--n_epochs",
                     type=int,
-                    default=20,
+                    default=100,
                     help="number of epochs of training")
 parser.add_argument("--batch_size",
                     type=int,
@@ -56,6 +61,14 @@ parser.add_argument("--sample_interval",
                     type=int,
                     default=400,
                     help="interval betwen image samples")
+parser.add_argument("--dataroot_pred",
+                    type=str,
+                    default='data/rockXCT_fractional_test',
+                    help="the target of data folder to predict")
+parser.add_argument("--csv_file_pred_output",
+                    type=str,
+                    default='normal_DL_pred_output.csv',
+                    help="the target of csv file to output")
 opt = parser.parse_args()
 
 
@@ -94,18 +107,67 @@ class DicomToNumberModel(L.LightningModule):
                  logger=True)
         return loss
 
+    def test_step(self, batch, batch_idx):
+        x, y = batch
+        y_hat = self(x)
+        loss = F.mse_loss(y_hat,
+                          y.unsqueeze(1).float())  # Mean Squared Error loss
+        self.log('test_loss',
+                 loss,
+                 on_step=True,
+                 on_epoch=True,
+                 prog_bar=True,
+                 logger=True)
+        return loss
+
+    def predict_step(self, batch, batch_idx):
+        pred = self(batch)
+        return pred
+
     def configure_optimizers(self):
         # Use Adam optimizer
         optimizer = torch.optim.Adam(self.parameters(), lr=opt.lr)
         return optimizer
 
 
-# ----------
-#  Training
-# ----------
+if opt.isTrain:
 
-dm = rockFractionalDataModule(opt.batch_size, opt.dataroot, opt.csv_file,
-                              opt.img_size, opt.channels, opt.n_cpu)
-model = DicomToNumberModel()
-trainer = L.Trainer(accelerator='auto', max_epochs=opt.n_epochs)
-trainer.fit(model, dm)
+    # ----------
+    #  Training
+    # ----------
+
+    dm = rockFractionalDataModule(opt.batch_size, opt.dataroot, opt.csv_file,
+                                  opt.img_size, opt.channels, opt.n_cpu)
+
+    model = DicomToNumberModel()
+    trainer = L.Trainer(accelerator='auto', max_epochs=opt.n_epochs)
+    trainer.fit(model, dm)
+
+    # ----------
+    #  Testing
+    # ----------
+
+    trainer.test()
+else:
+
+    # ----------
+    #  Prediting
+    # ----------
+
+    dm = rockFractionalDataModule(opt.batch_size, opt.dataroot_pred,
+                                  opt.csv_file_pred_output, opt.img_size,
+                                  opt.channels, opt.n_cpu)
+
+    model = DicomToNumberModel.load_from_checkpoint(
+        'lightning_logs/normal_DL_fractional_100/checkpoints/epoch=99-step=24500.ckpt'
+    )
+
+    trainer = L.Trainer(accelerator='auto')
+
+    pred_fractional_porosity = trainer.predict(model, dm)
+
+    pred_data = np.array(pred_fractional_porosity).reshape(-1)
+
+    output_df = pd.DataFrame(pred_data)
+
+    output_df.to_csv(opt.csv_file_pred_output)
