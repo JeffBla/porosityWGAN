@@ -102,6 +102,7 @@ class DicomToNumberModel(L.LightningModule):
 
     def training_step(self, batch, batch_idx):
         # Training step
+        self.train()
         x, y = batch
         y_hat = self(x)
         loss = F.mse_loss(
@@ -119,18 +120,19 @@ class DicomToNumberModel(L.LightningModule):
                            batch_idx: int) -> None:
         if batch_idx % 100 == 0:
             self.eval()
-            test_dataloader = self.dm.test_dataloader()
-            for test_batch in test_dataloader:
-                x, y = test_batch
-                x, y = x.to(self.device), y.to(self.device)
-                y_hat = self(x)
-                loss = F.mse_loss(y_hat, y.unsqueeze(1).float()) * 100000
-                self.log('test_loss',
-                         loss,
-                         on_step=True,
-                         on_epoch=True,
-                         prog_bar=True,
-                         logger=True)
+            with torch.no_grad():
+                test_dataloader = self.dm.test_dataloader()
+                for test_batch in test_dataloader:
+                    x, y = test_batch
+                    x, y = x.to(self.device), y.to(self.device)
+                    y_hat = self(x)
+                    loss = F.mse_loss(y_hat, y.unsqueeze(1).float()) * 100000
+                    self.log('test_loss',
+                             loss,
+                             on_step=True,
+                             on_epoch=True,
+                             prog_bar=True,
+                             logger=True)
 
         return super().on_train_batch_end(outputs, batch, batch_idx)
 
