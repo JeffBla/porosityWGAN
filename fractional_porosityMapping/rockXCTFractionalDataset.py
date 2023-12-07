@@ -19,6 +19,9 @@ from torch.utils.data import DataLoader, Dataset, random_split, ConcatDataset
 
 import lightning as L
 
+CTG = 3000
+AIR = -1024
+
 
 def removeDcmImage(dcmImage_CT_tensor, indexes):
     preserve_indexes = range(dcmImage_CT_tensor.shape[0])
@@ -29,6 +32,12 @@ def removeDcmImage(dcmImage_CT_tensor, indexes):
 
 
 def batch_height_widthRescale(imagePlusOneDim: torch.Tensor) -> torch.Tensor:
+    return (imagePlusOneDim - AIR) / (CTG - AIR)
+
+
+# this method should be wrong
+def batch_height_widthRescale_withImgMaxMin(
+        imagePlusOneDim: torch.Tensor) -> torch.Tensor:
     output = imagePlusOneDim.view(imagePlusOneDim.shape[0], -1)
     output -= output.min(1, keepdim=True)[0]
     output /= output.max(1, keepdim=True)[0]
@@ -76,67 +85,62 @@ class rockFractionalDataModule(L.LightningDataModule):
         self.train_test_spilt = 0.7
 
     def setup(self, stage):
-        if stage != 'predict':
-            fractional_df = pd.read_csv(self.csv_file)
-
-        datarootPath = Path(self.dataroot)
-        for folder in os.listdir(datarootPath):
-            targetFolder = datarootPath / folder
+        if stage == 'predict':
             reader = vtkDICOMImageReader()
-            reader.SetDirectoryName(str(targetFolder))
+            reader.SetDirectoryName(self.dataroot)
             reader.Update()
 
-            files = os.listdir(targetFolder)
-
-            dcmImage_CT = np.array(
-                reader.GetOutput().GetPointData().GetScalars()).reshape(
-                    len(files), reader.GetHeight(), reader.GetWidth())
-
-            dcmImage_CT_tensor = torch.tensor(dcmImage_CT, dtype=torch.float)
-            dcmImage_CT_tensor = dcmImage_CT_tensor.unsqueeze(1)
-            dcmImage_CT_tensor = batch_height_widthRescale(dcmImage_CT_tensor)
-
-            target_df_values = None
-            if stage != 'predict':
-                # fractional porosity appending
-                section_coreID = folder.split('_')[0]
-                section_num = int(folder.split('_')[-1])
-                section_df = fractional_df[
-                    (fractional_df['Core ID'] == section_coreID)
-                    & (fractional_df['Section (m)'] == section_num)]
-                section_df = section_df[:dcmImage_CT_tensor.
-                                        shape[0]].reset_index()
-
-                # remove nan along with dcm image
-                remove_indexes = section_df[
-                    section_df['Fractional porosity'].isna()].index
-
-                # remove value inside dcmImage tensor
-                if not remove_indexes.empty:
-                    dcmImage_CT_tensor = removeDcmImage(
-                        dcmImage_CT_tensor, remove_indexes)
-
-                    # remove valuse inside dataFrame
-                    section_df.dropna(inplace=True)
-
-                target_df_values = section_df['Fractional porosity'].values
+            dcmImage_CT_tensor = self.ReadDcmFolder(self.dataroot, reader)
 
             # Create Dataset
-            dataset = rockXCTFractionMappingDataset(
-                fractional_porositySet=target_df_values,
+            self.pred_dataset = rockXCTFractionMappingDataset(
+                fractional_porositySet=None,
                 ct_imgSet=dcmImage_CT_tensor,
                 transform=transforms.Compose([
                     transforms.Resize(self.img_size, antialias=False),
                     transforms.Normalize((0.5), (0.5)),
                 ]))
-            self.datasetList.append(dataset)
 
-        self.wholeDataset = ConcatDataset(self.datasetList)
+        else:
+            csvPorosityRef = pd.read_csv(self.csv_file)
 
-        if stage != 'predict':
+            datarootPath = Path(self.dataroot)
+            for folder in os.listdir(datarootPath):
+                targetFolder = datarootPath / folder
+                reader = vtkDICOMImageReader()
+                reader.SetDirectoryName(str(targetFolder))
+                reader.Update()
+
+                dcmImage_CT_tensor = self.ReadDcmFolder(targetFolder, reader)
+
+                # attach fractional porosity
+                # resolve the target by file path
+                core, section, group = folder.split('_')[:3]
+                section = int(section)
+                group = int(group)
+                fractionalPorosity = csvPorosityRef[
+                    (csvPorosityRef['Core ID'] == core)
+                    & (csvPorosityRef['Section (m)'] == section) &
+                    (csvPorosityRef['Group'] == group)]['Fractional porosity']
+
+                target_df_values = fractionalPorosity.values
+
+                # Create Dataset
+                dataset = rockXCTFractionMappingDataset(
+                    fractional_porositySet=target_df_values,
+                    ct_imgSet=dcmImage_CT_tensor,
+                    transform=transforms.Compose([
+                        transforms.Resize(self.img_size, antialias=False),
+                        transforms.Normalize((0.5), (0.5)),
+                    ]))
+                self.datasetList.append(dataset)
+
+            self.wholeDataset = ConcatDataset(self.datasetList)
+
+            generator = torch.Generator().manual_seed(42)
             self.train_data, self.test_data = random_split(
                 self.wholeDataset,
-                [self.train_test_spilt, 1 - self.train_test_spilt])
+                [self.train_test_spilt, 1 - self.train_test_spilt], generator)
 
     def train_dataloader(self) -> TRAIN_DATALOADERS:
         return DataLoader(self.train_data,
@@ -151,7 +155,22 @@ class rockFractionalDataModule(L.LightningDataModule):
                           num_workers=self.n_cpu)
 
     def predict_dataloader(self) -> EVAL_DATALOADERS:
-        return DataLoader(self.wholeDataset,
+        return DataLoader(self.pred_dataset,
                           batch_size=self.batch_size,
                           shuffle=False,
                           num_workers=self.n_cpu)
+
+    def ReadDcmFolder(self, folder,
+                      reader: vtkDICOMImageReader) -> torch.Tensor:
+        files = os.listdir(folder)
+
+        dcmImage_CT = np.array(
+            reader.GetOutput().GetPointData().GetScalars()).reshape(
+                len(files), reader.GetHeight(), reader.GetWidth())
+
+        dcmImage_CT_tensor = torch.tensor(dcmImage_CT, dtype=torch.float)
+        dcmImage_CT_tensor = dcmImage_CT_tensor.unsqueeze(1)
+        dcmImage_CT_tensor = batch_height_widthRescale_withImgMaxMin(
+            dcmImage_CT_tensor)
+
+        return dcmImage_CT_tensor
